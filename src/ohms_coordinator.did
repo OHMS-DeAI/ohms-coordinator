@@ -1,0 +1,123 @@
+type AgentRegistration = record {
+  agent_id : text;
+  agent_principal : text;
+  capabilities : vec text;
+  model_id : text;
+  health_score : float32;
+  registered_at : nat64;
+  last_seen : nat64;
+};
+
+type BountySpec = record {
+  title : text;
+  description : text;
+  required_capabilities : vec text;
+  max_participants : nat32;
+  deadline_timestamp : nat64;
+  escrow_amount : nat64;
+};
+
+type BountyStatus = variant {
+  Open;
+  InProgress;
+  Resolved;
+  Cancelled;
+  Expired;
+};
+
+type Bounty = record {
+  bounty_id : text;
+  spec : BountySpec;
+  creator : text;
+  escrow_id : text;
+  status : BountyStatus;
+  created_at : nat64;
+  submissions : vec BountySubmission;
+};
+
+type BountySubmission = record {
+  submission_id : text;
+  bounty_id : text;
+  agent_id : text;
+  payload : vec nat8;
+  submitted_at : nat64;
+  evaluation_score : opt float32;
+};
+
+type BountyResolution = record {
+  bounty_id : text;
+  winner_id : opt text;
+  resolution_type : ResolutionType;
+  resolved_at : nat64;
+  settlement_details : text;
+};
+
+type ResolutionType = variant {
+  WinnerSelected;
+  NoWinner;
+  Cancelled;
+  Expired;
+};
+
+type RoutingMode = variant {
+  Unicast;
+  Broadcast;
+  Competition;
+};
+
+type RouteRequest = record {
+  request_id : text;
+  requester : text;
+  capabilities_required : vec text;
+  payload : vec nat8;
+  routing_mode : RoutingMode;
+};
+
+type RouteResponse = record {
+  request_id : text;
+  selected_agents : vec text;
+  routing_time_ms : nat64;
+  selection_criteria : text;
+};
+
+type CoordinatorHealth = record {
+  total_agents : nat32;
+  active_agents : nat32;
+  total_bounties : nat32;
+  active_bounties : nat32;
+  total_routes_processed : nat64;
+  average_routing_time_ms : float64;
+  dedup_cache_size : nat32;
+};
+
+type RoutingStats = record {
+  agent_id : text;
+  total_requests : nat64;
+  success_rate : float32;
+  average_response_time_ms : float64;
+};
+
+type Result = variant { Ok : text; Err : text };
+type Result_1 = variant { Ok : AgentRegistration; Err : text };
+type Result_2 = variant { Ok : RouteResponse; Err : text };
+type Result_3 = variant { Ok : BountyResolution; Err : text };
+type Result_4 = variant { Ok : Bounty; Err : text };
+type Result_5 = variant { Ok : vec AgentRegistration; Err : text };
+type Result_6 = variant { Ok : vec Bounty; Err : text };
+type Result_7 = variant { Ok : vec RoutingStats; Err : text };
+type Result_8 = variant { Ok; Err : text };
+
+service : {
+  get_agent : (text) -> (Result_1) query;
+  get_bounty : (text) -> (Result_4) query;
+  get_routing_stats : (opt text) -> (Result_7) query;
+  health : () -> (CoordinatorHealth) query;
+  list_agents : () -> (Result_5) query;
+  list_bounties : () -> (Result_6) query;
+  open_bounty : (BountySpec, text) -> (Result);
+  register_agent : (AgentRegistration) -> (Result);
+  resolve_bounty : (text, opt text) -> (Result_3);
+  route_request : (RouteRequest) -> (Result_2);
+  submit_result : (text, text, vec nat8) -> (Result);
+  update_agent_health : (text, float32) -> (Result_8);
+}
