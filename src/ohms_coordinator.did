@@ -1,6 +1,7 @@
 type AgentRegistration = record {
   agent_id : text;
   agent_principal : text;
+  canister_id : text;
   capabilities : vec text;
   model_id : text;
   health_score : float32;
@@ -106,6 +107,17 @@ type Result_5 = variant { Ok : vec AgentRegistration; Err : text };
 type Result_6 = variant { Ok : vec Bounty; Err : text };
 type Result_7 = variant { Ok : vec RoutingStats; Err : text };
 type Result_8 = variant { Ok; Err : text };
+type Result_9 = variant { Ok : SwarmPolicy; Err : text };
+
+// Swarm / Hive types
+type SwarmTopology = variant { Mesh; Hierarchical; Ring; Star };
+type OrchestrationMode = variant { Parallel; Sequential; Adaptive };
+type SwarmPolicy = record {
+  topology : SwarmTopology;
+  mode : OrchestrationMode;
+  top_k : nat32;
+  window_ms : nat64;
+};
 
 service : {
   get_agent : (text) -> (Result_1) query;
@@ -118,6 +130,10 @@ service : {
   register_agent : (AgentRegistration) -> (Result);
   resolve_bounty : (text, opt text) -> (Result_3);
   route_request : (RouteRequest) -> (Result_2);
+  route_best_result : (RouteRequest, nat32, nat64) -> (Result_2);
+  competition_summary : (text) -> (record { request_id: text; top_k: nat32; window_ms: nat64; winner_id: opt text; scores: vec record { text; float32 }}) query;
   submit_result : (text, text, vec nat8) -> (Result);
   update_agent_health : (text, float32) -> (Result_8);
+  set_swarm_policy : (SwarmPolicy) -> (Result_8);
+  get_swarm_policy : () -> (SwarmPolicy) query;
 }

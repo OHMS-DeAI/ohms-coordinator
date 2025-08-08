@@ -2,8 +2,20 @@
   "canisters": {
     "ohms_coordinator": {
       "type": "rust",
-      "candid": "src/ohms_coordinator.did",
-      "package": "ohms_coordinator"
+      "package": "ohms_coordinator",
+      "candid": "src/ohms_coordinator.did"
+    }
+  },
+  "defaults": {
+    "build": {
+      "packtool": "",
+      "args": ""
+    },
+    "canister_http": {
+      "enabled": false
+    },
+    "rust": {
+      "args": ""
     }
   },
   "networks": {
@@ -12,18 +24,8 @@
       "type": "ephemeral"
     },
     "ic": {
-      "providers": [
-        "https://ic0.app"
-      ],
       "type": "persistent"
     }
   },
-  "defaults": {
-    "build": {
-      "args": "",
-      "packtool": ""
-    }
-  },
-  "output_env_file": ".env",
   "version": 1
 }

@@ -1,6 +1,6 @@
 use ic_cdk_macros::*;
 use crate::domain::*;
-use crate::services::{RegistryService, RoutingService, BountyService};
+use crate::services::{RegistryService, RoutingService, BountyService, with_state, with_state_mut};
 use crate::infra::{Guards, Metrics};
 
 #[update]
@@ -84,4 +84,29 @@ fn get_routing_stats(agent_id: Option<String>) -> Result<Vec<RoutingStats>, Stri
 fn update_agent_health(agent_id: String, health_score: f32) -> Result<(), String> {
     Guards::require_caller_authenticated()?;
     RegistryService::update_agent_health(agent_id, health_score)
+}
+
+#[update]
+async fn set_swarm_policy(policy: SwarmPolicy) -> Result<(), String> {
+    Guards::require_caller_authenticated()?;
+    with_state_mut(|s| { s.config.swarm = policy; });
+    Ok(())
+}
+
+#[query]
+fn get_swarm_policy() -> SwarmPolicy {
+    with_state(|s| s.config.swarm.clone())
+}
+
+#[update]
+async fn route_best_result(request: RouteRequest, top_k: u32, window_ms: u64) -> Result<RouteResponse, String> {
+    Guards::require_caller_authenticated()?;
+    Guards::validate_msg_id(&request.request_id)?;
+    RoutingService::fanout_best_result(request, top_k as usize, window_ms).await
+}
+
+#[query]
+fn competition_summary(request_id: String) -> CompetitionSummary {
+    // Placeholder summary until we persist competitions
+    CompetitionSummary { request_id, top_k: 0, window_ms: 0, winner_id: None, scores: vec![] }
 }

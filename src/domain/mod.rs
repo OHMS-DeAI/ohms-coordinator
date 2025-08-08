@@ -6,6 +6,7 @@ use std::collections::HashMap;
 pub struct AgentRegistration {
     pub agent_id: String,
     pub agent_principal: String,
+    pub canister_id: String,
     pub capabilities: Vec<String>,
     pub model_id: String,
     pub health_score: f32,
@@ -120,4 +121,60 @@ pub struct DedupEntry {
     pub processed_at: u64,
     pub result_hash: String,
     pub ttl_expires_at: u64,
+}
+
+// Swarm/Hive policy
+#[derive(Debug, Clone, Serialize, Deserialize, CandidType)]
+pub enum SwarmTopology { Mesh, Hierarchical, Ring, Star }
+
+#[derive(Debug, Clone, Serialize, Deserialize, CandidType)]
+pub enum OrchestrationMode { Parallel, Sequential, Adaptive }
+
+#[derive(Debug, Clone, Serialize, Deserialize, CandidType)]
+pub struct SwarmPolicy {
+    pub topology: SwarmTopology,
+    pub mode: OrchestrationMode,
+    pub top_k: u32,
+    pub window_ms: u64,
+}
+
+impl Default for SwarmPolicy {
+    fn default() -> Self {
+        Self { topology: SwarmTopology::Mesh, mode: OrchestrationMode::Parallel, top_k: 3, window_ms: 100 }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, CandidType)]
+pub struct CoordinatorConfig {
+    pub swarm: SwarmPolicy,
+}
+
+impl Default for CoordinatorConfig {
+    fn default() -> Self { Self { swarm: SwarmPolicy::default() } }
+}
+
+// Verifier/Competition types
+#[derive(Debug, Clone, Serialize, Deserialize, CandidType)]
+pub struct VerifierSpec {
+    pub required_substrings: Vec<String>,
+    pub required_json_keys: Vec<String>,
+}
+
+impl Default for VerifierSpec {
+    fn default() -> Self { Self { required_substrings: vec![], required_json_keys: vec![] } }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, CandidType)]
+pub struct VerifierEvidence {
+    pub passed: bool,
+    pub details: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, CandidType)]
+pub struct CompetitionSummary {
+    pub request_id: String,
+    pub top_k: u32,
+    pub window_ms: u64,
+    pub winner_id: Option<String>,
+    pub scores: Vec<(String, f32)>,
 }

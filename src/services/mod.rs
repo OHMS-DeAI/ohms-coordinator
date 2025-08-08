@@ -24,6 +24,7 @@ pub struct CoordinatorState {
     pub dedup_cache: HashMap<String, DedupEntry>,
     pub routing_stats: HashMap<String, RoutingStats>,
     pub metrics: CoordinatorMetrics,
+    pub config: CoordinatorConfig,
 }
 
 #[derive(Debug, Default)]

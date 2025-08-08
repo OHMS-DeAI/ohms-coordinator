@@ -1,9 +1,11 @@
 use crate::domain::*;
 use crate::services::{with_state, with_state_mut, RegistryService, DedupService};
 use ic_cdk::api::time;
-use rand::{SeedableRng, Rng};
-use rand_chacha::ChaCha8Rng;
-use std::collections::HashMap;
+use candid::{Principal, CandidType};
+use serde::Deserialize;
+use ic_cdk::api::call::call;
+use futures::future::join_all;
+use sha2::{Sha256, Digest};
 
 pub struct RoutingService;
 
@@ -43,6 +45,7 @@ impl RoutingService {
             state.metrics.last_activity = time();
         });
         
+        // Optionally trigger downstream calls (not returning results here; response carries selection)
         Ok(response)
     }
     
@@ -88,15 +91,14 @@ impl RoutingService {
             return Err("No agents available for competition".to_string());
         }
         
-        // For competition mode, include diversity - not just top scorers
-        let mut selected = Vec::new();
-        let mut rng = ChaCha8Rng::seed_from_u64(time());
-        
-        for agent in candidates.into_iter().take(max_agents) {
-            if agent.health_score > 0.3 && rng.gen::<f32>() > 0.2 {
-                selected.push(agent);
-            }
-        }
+        // For competition mode, include top scored agents up to max_agents
+        let mut pool = candidates;
+        pool.sort_by(|a, b| {
+            let score_a = Self::calculate_agent_score(a, capabilities);
+            let score_b = Self::calculate_agent_score(b, capabilities);
+            score_b.partial_cmp(&score_a).unwrap()
+        });
+        let selected: Vec<AgentRegistration> = pool.into_iter().take(max_agents).collect();
         
         Ok(selected)
     }
@@ -125,6 +127,87 @@ impl RoutingService {
             .sum::<f32>() / required_capabilities.len().max(1) as f32;
         
         health_weight * health_score + capability_weight * capability_score
+    }
+
+    pub async fn fanout_best_result(request: RouteRequest, k: usize, window_ms: u64) -> Result<RouteResponse, String> {
+        // Enforce subscription tier cap (temporary: cap to 3)
+        let cap_k = k.min(3);
+        let agents = Self::select_multiple_agents(&request.capabilities_required, cap_k)?;
+        if agents.is_empty() { return Err("No agents available".to_string()); }
+
+        let start = time();
+
+        // Build prompt and request payload for agents
+        let prompt = String::from_utf8(request.payload.clone()).unwrap_or_else(|_| "".to_string());
+        let seed = Self::derive_seed(&request.request_id);
+        let msg_id = request.request_id.clone();
+
+        // Dispatch concurrent calls
+        let futures = agents.iter().map(|agent| {
+            let canister_id = agent.canister_id.clone();
+            let agent_id = agent.agent_id.clone();
+            let req = AInferenceRequest::new(seed, &prompt, &msg_id);
+            async move {
+                let started = time();
+                let pr = Principal::from_text(canister_id.clone())
+                    .map_err(|e| format!("Invalid canister id for agent {}: {}", agent_id, e))?;
+                // Call agent.infer(InferenceRequest)
+                let (result,): (AResult2,) = call(pr, "infer", (req,)).await
+                    .map_err(|e| format!("infer call failed for {}: {:?}", agent_id, e))?;
+                let elapsed = time() - started;
+
+                let scored = match result {
+                    AResult2::Ok(resp) => {
+                        // Run lightweight verifiers
+                        let evidence = Self::run_verifiers(&resp);
+                        let score = Self::score_response(&resp, elapsed) + if evidence.passed { 0.1 } else { 0.0 };
+                        Ok((agent_id, elapsed, Some(resp), score))
+                    },
+                    AResult2::Err(err) => Err(format!("agent {} error: {}", agent_id, err)),
+                };
+                scored
+            }
+        });
+
+        let results = join_all(futures).await;
+
+        // Choose best among those within window
+        let mut best_agent: Option<(String, u64, f32)> = None; // (agent_id, elapsed, score)
+        let mut selected_ids: Vec<String> = Vec::new();
+        for res in results.into_iter() {
+            match res {
+                Ok((agent_id, elapsed, _resp_opt, score)) => {
+                    selected_ids.push(agent_id.clone());
+                    if elapsed <= window_ms {
+                        if let Some((_, _, best_score)) = &best_agent {
+                            if score > *best_score {
+                                best_agent = Some((agent_id.clone(), elapsed, score));
+                            }
+                        } else {
+                            best_agent = Some((agent_id.clone(), elapsed, score));
+                        }
+                    }
+                }
+                Err(_e) => {
+                    // Skip failed agent
+                    continue;
+                }
+            }
+        }
+
+        // Winner prioritization: put winner first if exists
+        if let Some((winner_id, _elapsed, _score)) = &best_agent {
+            selected_ids.sort_by_key(|id| if id == winner_id { 0 } else { 1 });
+        }
+
+        let resp = RouteResponse {
+            request_id: request.request_id.clone(),
+            selected_agents: selected_ids,
+            routing_time_ms: time() - start,
+            selection_criteria: format!("fanout_top_k={} window_ms={} winner={}", cap_k, window_ms, best_agent.as_ref().map(|(w,_,_)| w.clone()).unwrap_or_default()),
+        };
+        DedupService::record_request(&request.request_id, &resp)?;
+        Ok(resp)
     }
     
     pub fn get_stats(agent_id: Option<String>) -> Vec<RoutingStats> {
@@ -155,5 +238,84 @@ impl RoutingService {
                 stats.average_response_time_ms = new_avg_time;
             }
         });
+    }
+}
+
+// Local mirror types to call ohms-agent canister
+#[derive(Clone, Debug, CandidType, Deserialize)]
+struct ADecodeParams {
+    max_tokens: Option<u32>,
+    temperature: Option<f32>,
+    top_p: Option<f32>,
+    top_k: Option<u32>,
+    repetition_penalty: Option<f32>,
+}
+
+#[derive(Clone, Debug, CandidType, Deserialize)]
+struct AInferenceRequest {
+    seed: u64,
+    prompt: String,
+    decode_params: ADecodeParams,
+    msg_id: String,
+}
+
+impl AInferenceRequest {
+    fn new(seed: u64, prompt: &str, msg_id: &str) -> Self {
+        Self {
+            seed,
+            prompt: prompt.to_string(),
+            decode_params: ADecodeParams { max_tokens: Some(128), temperature: Some(0.7), top_p: Some(0.9), top_k: None, repetition_penalty: None },
+            msg_id: msg_id.to_string(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, CandidType, Deserialize)]
+struct AInferenceResponse {
+    tokens: Vec<String>,
+    generated_text: String,
+    inference_time_ms: u64,
+    cache_hits: u32,
+    cache_misses: u32,
+}
+
+#[derive(Clone, Debug, CandidType, Deserialize)]
+enum AResult2 {
+    Ok(AInferenceResponse),
+    Err(String),
+}
+
+impl RoutingService {
+    fn derive_seed(msg_id: &str) -> u64 {
+        let mut hasher = Sha256::new();
+        hasher.update(msg_id.as_bytes());
+        let digest = hasher.finalize();
+        let mut bytes = [0u8; 8];
+        bytes.copy_from_slice(&digest[..8]);
+        u64::from_be_bytes(bytes)
+    }
+
+    fn score_response(resp: &AInferenceResponse, elapsed_ms: u64) -> f32 {
+        // Simple heuristic: positive credit for content length and tokens count; negative for latency
+        let len_score = (resp.generated_text.len() as f32).min(1000.0) / 1000.0; // cap
+        let tok_score = (resp.tokens.len() as f32).min(256.0) / 256.0;
+        let latency_penalty = (elapsed_ms as f32) / 5000.0; // 5s baseline
+        let cache_bonus = if resp.cache_hits + resp.cache_misses > 0 { (resp.cache_hits as f32) / ((resp.cache_hits + resp.cache_misses) as f32) * 0.1 } else { 0.0 };
+        (0.6 * len_score) + (0.3 * tok_score) + cache_bonus - (0.4 * latency_penalty)
+    }
+
+    fn run_verifiers(resp: &AInferenceResponse) -> VerifierEvidence {
+        // Simple validators: ensure non-empty, attempt JSON parse if starts with '{'
+        if resp.generated_text.trim().is_empty() {
+            return VerifierEvidence { passed: false, details: "empty output".to_string() };
+        }
+        if resp.generated_text.trim_start().starts_with('{') {
+            // shallow JSON key check for demo
+            let has_colon = resp.generated_text.contains(':');
+            if !has_colon {
+                return VerifierEvidence { passed: false, details: "invalid json shape".to_string() };
+            }
+        }
+        VerifierEvidence { passed: true, details: "basic checks pass".to_string() }
     }
 }
