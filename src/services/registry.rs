@@ -96,17 +96,16 @@ impl RegistryService {
                 .filter(|agent| agent.health_score > 0.5)
                 .count() as u32;
             
-            let total_bounties = state.bounties.len() as u32;
-            let active_bounties = state.bounties
+            let total_agent_creations = state.agent_creation_results.len() as u32;
+            let active_instructions = state.instruction_requests
                 .values()
-                .filter(|bounty| matches!(bounty.status, BountyStatus::Open | BountyStatus::InProgress))
                 .count() as u32;
             
             CoordinatorHealth {
                 total_agents,
                 active_agents,
-                total_bounties,
-                active_bounties,
+                total_agent_creations,
+                active_instructions,
                 total_routes_processed: state.metrics.total_routes,
                 average_routing_time_ms: state.metrics.average_routing_time_ms,
                 dedup_cache_size: state.dedup_cache.len() as u32,

@@ -1,6 +1,6 @@
 use ic_cdk_macros::*;
 use crate::domain::*;
-use crate::services::{RegistryService, RoutingService, BountyService, with_state, with_state_mut};
+use crate::services::{RegistryService, RoutingService, InstructionAnalyzerService, AgentSpawningService, with_state, with_state_mut};
 use crate::infra::{Guards, Metrics};
 
 #[update]
@@ -22,27 +22,64 @@ async fn route_request(request: RouteRequest) -> Result<RouteResponse, String> {
 }
 
 #[update]
-async fn open_bounty(spec: BountySpec, escrow_id: String) -> Result<String, String> {
+async fn create_agents_from_instructions(instructions: String, agent_count: Option<u32>) -> Result<String, String> {
     Guards::require_caller_authenticated()?;
-    let bounty_id = BountyService::open_bounty(spec, escrow_id).await?;
-    Metrics::increment_counter("bounties_opened_total");
-    Ok(bounty_id)
+    let request_id = format!("req_{}", ic_cdk::api::time());
+    let user_principal = ic_cdk::api::caller().to_string();
+    
+    let instruction_request = InstructionRequest {
+        request_id: request_id.clone(),
+        user_principal: user_principal.clone(),
+        instructions: instructions.clone(),
+        agent_count,
+        model_preferences: vec![],
+        created_at: ic_cdk::api::time(),
+    };
+    
+    // Store instruction request
+    with_state_mut(|state| {
+        state.instruction_requests.insert(request_id.clone(), instruction_request);
+    });
+    
+    // Spawn agents using the agent spawning service
+    match AgentSpawningService::spawn_agents_from_instructions(&request_id, &user_principal, &instructions).await {
+        Ok(_result) => {
+            Metrics::increment_counter("agent_creation_requests_total");
+            Ok(request_id)
+        },
+        Err(e) => {
+            // Remove the instruction request if spawning failed
+            with_state_mut(|state| {
+                state.instruction_requests.remove(&request_id);
+            });
+            Err(format!("Failed to spawn agents: {}", e))
+        }
+    }
 }
 
-#[update]
-async fn submit_result(bounty_id: String, agent_id: String, payload: Vec<u8>) -> Result<String, String> {
+#[query]
+fn get_agent_creation_status(request_id: String) -> Result<AgentCreationResult, String> {
     Guards::require_caller_authenticated()?;
-    let submission_id = BountyService::submit_result(bounty_id, agent_id, payload).await?;
-    Metrics::increment_counter("bounty_submissions_total");
-    Ok(submission_id)
+    
+    let result = with_state(|state| {
+        state.agent_creation_results.get(&request_id).cloned()
+    });
+    
+    result.ok_or_else(|| "Agent creation request not found".to_string())
 }
 
-#[update]
-async fn resolve_bounty(bounty_id: String, winner_id: Option<String>) -> Result<BountyResolution, String> {
+#[query]
+fn get_user_quota_status() -> Result<QuotaCheckResult, String> {
     Guards::require_caller_authenticated()?;
-    let resolution = BountyService::resolve_bounty(bounty_id, winner_id).await?;
-    Metrics::increment_counter("bounties_resolved_total");
-    Ok(resolution)
+    let user_principal = ic_cdk::api::caller().to_string();
+    
+    // TODO: Implement actual quota checking with ohms-econ integration
+    Ok(QuotaCheckResult {
+        quota_available: true,
+        remaining_agents: 10,
+        monthly_limit: 25,
+        tier: "Pro".to_string(),
+    })
 }
 
 #[query]
@@ -58,15 +95,28 @@ fn list_agents() -> Result<Vec<AgentRegistration>, String> {
 }
 
 #[query]
-fn get_bounty(bounty_id: String) -> Result<Bounty, String> {
+fn list_user_agents() -> Result<Vec<AgentRegistration>, String> {
     Guards::require_caller_authenticated()?;
-    BountyService::get_bounty(&bounty_id)
+    let user_principal = ic_cdk::api::caller().to_string();
+    
+    // TODO: Filter agents by user principal
+    Ok(RegistryService::list_agents())
 }
 
 #[query]
-fn list_bounties() -> Result<Vec<Bounty>, String> {
+fn list_instruction_requests() -> Result<Vec<InstructionRequest>, String> {
     Guards::require_caller_authenticated()?;
-    Ok(BountyService::list_bounties())
+    let user_principal = ic_cdk::api::caller().to_string();
+    
+    let requests = with_state(|state| {
+        state.instruction_requests
+            .values()
+            .filter(|req| req.user_principal == user_principal)
+            .cloned()
+            .collect::<Vec<_>>()
+    });
+    
+    Ok(requests)
 }
 
 #[query]
@@ -106,7 +156,16 @@ async fn route_best_result(request: RouteRequest, top_k: u32, window_ms: u64) ->
 }
 
 #[query]
-fn competition_summary(request_id: String) -> CompetitionSummary {
-    // Placeholder summary until we persist competitions
-    CompetitionSummary { request_id, top_k: 0, window_ms: 0, winner_id: None, scores: vec![] }
+fn get_instruction_analysis(request_id: String) -> Result<InstructionAnalysisResult, String> {
+    Guards::require_caller_authenticated()?;
+    
+    // Get the instruction request
+    let instruction_request = with_state(|state| {
+        state.instruction_requests.get(&request_id).cloned()
+    });
+    
+    let instruction_request = instruction_request.ok_or_else(|| "Instruction request not found".to_string())?;
+    
+    // Analyze the instructions
+    InstructionAnalyzerService::analyze_instructions(&instruction_request.instructions, &instruction_request.user_principal)
 }

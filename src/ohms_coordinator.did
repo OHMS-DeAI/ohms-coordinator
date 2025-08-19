@@ -9,61 +9,55 @@ type AgentRegistration = record {
   last_seen : nat64;
 };
 
-type BountySpec = record {
-  title : text;
-  description : text;
-  required_capabilities : vec text;
-  max_participants : nat32;
-  deadline_timestamp : nat64;
-  escrow_amount : nat64;
-};
-
-type BountyStatus = variant {
-  Open;
-  InProgress;
-  Resolved;
-  Cancelled;
-  Expired;
-};
-
-type Bounty = record {
-  bounty_id : text;
-  spec : BountySpec;
-  creator : text;
-  escrow_id : text;
-  status : BountyStatus;
+type InstructionRequest = record {
+  request_id : text;
+  user_principal : text;
+  instructions : text;
+  agent_count : opt nat32;
+  model_preferences : vec text;
   created_at : nat64;
-  submissions : vec BountySubmission;
 };
 
-type BountySubmission = record {
-  submission_id : text;
-  bounty_id : text;
-  agent_id : text;
-  payload : vec nat8;
-  submitted_at : nat64;
-  evaluation_score : opt float32;
+type AgentCreationStatus = variant {
+  InProgress;
+  Completed;
+  Failed;
+  QuotaExceeded;
 };
 
-type BountyResolution = record {
-  bounty_id : text;
-  winner_id : opt text;
-  resolution_type : ResolutionType;
-  resolved_at : nat64;
-  settlement_details : text;
+type AgentCreationResult = record {
+  request_id : text;
+  created_agents : vec text;
+  creation_time_ms : nat64;
+  status : AgentCreationStatus;
 };
 
-type ResolutionType = variant {
-  WinnerSelected;
-  NoWinner;
-  Cancelled;
-  Expired;
+type QuotaCheckResult = record {
+  quota_available : bool;
+  remaining_agents : nat32;
+  monthly_limit : nat32;
+  tier : text;
+};
+
+type InstructionAnalysisResult = record {
+  request_id : text;
+  parsed_requirements : vec text;
+  suggested_agents : vec AgentSpec;
+  coordination_plan : text;
+  quota_check : QuotaCheckResult;
+};
+
+type AgentSpec = record {
+  agent_type : text;
+  required_capabilities : vec text;
+  model_requirements : vec text;
+  specialization : text;
 };
 
 type RoutingMode = variant {
   Unicast;
   Broadcast;
-  Competition;
+  AgentSpawning;
 };
 
 type RouteRequest = record {
@@ -84,8 +78,8 @@ type RouteResponse = record {
 type CoordinatorHealth = record {
   total_agents : nat32;
   active_agents : nat32;
-  total_bounties : nat32;
-  active_bounties : nat32;
+  total_agent_creations : nat32;
+  active_instructions : nat32;
   total_routes_processed : nat64;
   average_routing_time_ms : float64;
   dedup_cache_size : nat32;
@@ -98,18 +92,6 @@ type RoutingStats = record {
   average_response_time_ms : float64;
 };
 
-type Result = variant { Ok : text; Err : text };
-type Result_1 = variant { Ok : AgentRegistration; Err : text };
-type Result_2 = variant { Ok : RouteResponse; Err : text };
-type Result_3 = variant { Ok : BountyResolution; Err : text };
-type Result_4 = variant { Ok : Bounty; Err : text };
-type Result_5 = variant { Ok : vec AgentRegistration; Err : text };
-type Result_6 = variant { Ok : vec Bounty; Err : text };
-type Result_7 = variant { Ok : vec RoutingStats; Err : text };
-type Result_8 = variant { Ok; Err : text };
-type Result_9 = variant { Ok : SwarmPolicy; Err : text };
-
-// Swarm / Hive types
 type SwarmTopology = variant { Mesh; Hierarchical; Ring; Star };
 type OrchestrationMode = variant { Parallel; Sequential; Adaptive };
 type SwarmPolicy = record {
@@ -119,21 +101,41 @@ type SwarmPolicy = record {
   window_ms : nat64;
 };
 
+type Result = variant { Ok : text; Err : text };
+type Result_1 = variant { Ok : AgentRegistration; Err : text };
+type Result_2 = variant { Ok : RouteResponse; Err : text };
+type Result_3 = variant { Ok : AgentCreationResult; Err : text };
+type Result_4 = variant { Ok : QuotaCheckResult; Err : text };
+type Result_5 = variant { Ok : vec AgentRegistration; Err : text };
+type Result_6 = variant { Ok : vec InstructionRequest; Err : text };
+type Result_7 = variant { Ok : vec RoutingStats; Err : text };
+type Result_8 = variant { Ok; Err : text };
+type Result_9 = variant { Ok : InstructionAnalysisResult; Err : text };
+
 service : {
-  get_agent : (text) -> (Result_1) query;
-  get_bounty : (text) -> (Result_4) query;
-  get_routing_stats : (opt text) -> (Result_7) query;
-  health : () -> (CoordinatorHealth) query;
-  list_agents : () -> (Result_5) query;
-  list_bounties : () -> (Result_6) query;
-  open_bounty : (BountySpec, text) -> (Result);
+  // Agent management
   register_agent : (AgentRegistration) -> (Result);
-  resolve_bounty : (text, opt text) -> (Result_3);
+  get_agent : (text) -> (Result_1) query;
+  list_agents : () -> (Result_5) query;
+  list_user_agents : () -> (Result_5) query;
+  update_agent_health : (text, float32) -> (Result_8);
+  
+  // OHMS 2.0: Instruction-based agent creation
+  create_agents_from_instructions : (text, opt nat32) -> (Result);
+  get_agent_creation_status : (text) -> (Result_3) query;
+  list_instruction_requests : () -> (Result_6) query;
+  get_instruction_analysis : (text) -> (Result_9) query;
+  
+  // Quota and subscription management
+  get_user_quota_status : () -> (Result_4) query;
+  
+  // Routing and coordination
   route_request : (RouteRequest) -> (Result_2);
   route_best_result : (RouteRequest, nat32, nat64) -> (Result_2);
-  competition_summary : (text) -> (record { request_id: text; top_k: nat32; window_ms: nat64; winner_id: opt text; scores: vec record { text; float32 }}) query;
-  submit_result : (text, text, vec nat8) -> (Result);
-  update_agent_health : (text, float32) -> (Result_8);
+  get_routing_stats : (opt text) -> (Result_7) query;
+  
+  // System management
+  health : () -> (CoordinatorHealth) query;
   set_swarm_policy : (SwarmPolicy) -> (Result_8);
   get_swarm_policy : () -> (SwarmPolicy) query;
 }

@@ -21,7 +21,7 @@ impl RoutingService {
         let selected_agents = match request.routing_mode {
             RoutingMode::Unicast => Self::select_best_agent(&request.capabilities_required)?,
             RoutingMode::Broadcast => Self::select_multiple_agents(&request.capabilities_required, 3)?,
-            RoutingMode::Competition => Self::select_competitive_agents(&request.capabilities_required, 5)?,
+            RoutingMode::AgentSpawning => Self::select_spawning_agents(&request.capabilities_required, 5)?,
         };
         
         let routing_time_ms = time() - start_time;
@@ -85,7 +85,7 @@ impl RoutingService {
         Ok(candidates)
     }
     
-    fn select_competitive_agents(capabilities: &[String], max_agents: usize) -> Result<Vec<AgentRegistration>, String> {
+    fn select_spawning_agents(capabilities: &[String], max_agents: usize) -> Result<Vec<AgentRegistration>, String> {
         let candidates = Self::get_capable_agents(capabilities);
         if candidates.is_empty() {
             return Err("No agents available for competition".to_string());
