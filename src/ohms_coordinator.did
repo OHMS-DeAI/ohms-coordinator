@@ -39,6 +39,57 @@ type QuotaCheckResult = record {
   tier : text;
 };
 
+type AgentSpawningMetrics = record {
+  total_instruction_requests : nat32;
+  total_agent_creations : nat32;
+  user_agents_created : nat32;
+  user_active_agents : nat32;
+  average_creation_time_ms : nat64;
+  success_rate : float32;
+};
+
+type CoordinationNetworkInfo = record {
+  network_id : text;
+  participant_count : nat32;
+  coordinator_agent : text;
+  status : text;
+  created_at : nat64;
+  last_activity : nat64;
+};
+
+type SubscriptionTierInfo = record {
+  current_tier : text;
+  max_agents : nat32;
+  monthly_creations : nat32;
+  token_limit : nat64;
+  inference_rate : text;
+  agents_created_this_month : nat32;
+  tokens_used_this_month : nat64;
+  last_reset_date : nat64;
+};
+
+type EconHealth = record {
+  total_escrows : nat32;
+  active_escrows : nat32;
+  total_receipts : nat32;
+  pending_settlements : nat32;
+  total_volume : nat64;
+  protocol_fees_collected : nat64;
+  average_job_cost : float64;
+};
+
+type QuotaRemaining = record {
+  agents_remaining : nat32;
+  tokens_remaining : nat64;
+  inferences_remaining : nat32;
+};
+
+type QuotaValidation = record {
+  allowed : bool;
+  reason : opt text;
+  remaining_quota : opt QuotaRemaining;
+};
+
 type InstructionAnalysisResult = record {
   request_id : text;
   parsed_requirements : vec text;
@@ -111,6 +162,11 @@ type Result_6 = variant { Ok : vec InstructionRequest; Err : text };
 type Result_7 = variant { Ok : vec RoutingStats; Err : text };
 type Result_8 = variant { Ok; Err : text };
 type Result_9 = variant { Ok : InstructionAnalysisResult; Err : text };
+type Result_10 = variant { Ok : AgentSpawningMetrics; Err : text };
+type Result_11 = variant { Ok : vec CoordinationNetworkInfo; Err : text };
+type Result_12 = variant { Ok : SubscriptionTierInfo; Err : text };
+type Result_13 = variant { Ok : EconHealth; Err : text };
+type Result_14 = variant { Ok : QuotaValidation; Err : text };
 
 service : {
   // Agent management
@@ -125,9 +181,18 @@ service : {
   get_agent_creation_status : (text) -> (Result_3) query;
   list_instruction_requests : () -> (Result_6) query;
   get_instruction_analysis : (text) -> (Result_9) query;
+  update_agent_status : (text, text) -> (Result_8);
+  
+  // OHMS 2.0: Agent spawning metrics and coordination
+  get_agent_spawning_metrics : () -> (Result_10) query;
+  get_coordination_networks : () -> (Result_11) query;
   
   // Quota and subscription management
-  get_user_quota_status : () -> (Result_4) query;
+  get_user_quota_status : () -> (Result_4);
+  upgrade_subscription_tier : (text) -> (Result_8);
+  get_subscription_tier_info : () -> (Result_12) query;
+  get_economics_health : () -> (Result_13);
+  validate_token_usage_quota : (nat64) -> (Result_14);
   
   // Routing and coordination
   route_request : (RouteRequest) -> (Result_2);

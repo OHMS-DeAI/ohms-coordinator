@@ -10,6 +10,7 @@ pub mod quota_manager;
 pub mod autonomous_coord;
 pub mod instruction_analyzer;
 pub mod agent_spawning;
+pub mod econ_integration;
 
 pub use registry::RegistryService;
 pub use routing::RoutingService;
@@ -18,6 +19,7 @@ pub use quota_manager::QuotaManager;
 pub use autonomous_coord::AutonomousCoordinationService;
 pub use instruction_analyzer::InstructionAnalyzerService;
 pub use agent_spawning::AgentSpawningService;
+pub use econ_integration::EconIntegrationService;
 
 thread_local! {
     static STATE: RefCell<CoordinatorState> = RefCell::new(CoordinatorState::default());

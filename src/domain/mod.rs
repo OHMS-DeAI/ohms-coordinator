@@ -158,6 +158,65 @@ pub struct QuotaCheckResult {
     pub tier: String,
 }
 
+// OHMS 2.0 API response types
+#[derive(Debug, Clone, Serialize, Deserialize, CandidType)]
+pub struct AgentSpawningMetrics {
+    pub total_instruction_requests: u32,
+    pub total_agent_creations: u32,
+    pub user_agents_created: u32,
+    pub user_active_agents: u32,
+    pub average_creation_time_ms: u64,
+    pub success_rate: f32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, CandidType)]
+pub struct CoordinationNetworkInfo {
+    pub network_id: String,
+    pub participant_count: u32,
+    pub coordinator_agent: String,
+    pub status: String,
+    pub created_at: u64,
+    pub last_activity: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, CandidType)]
+pub struct SubscriptionTierInfo {
+    pub current_tier: String,
+    pub max_agents: u32,
+    pub monthly_creations: u32,
+    pub token_limit: u64,
+    pub inference_rate: String,
+    pub agents_created_this_month: u32,
+    pub tokens_used_this_month: u64,
+    pub last_reset_date: u64,
+}
+
+// Economics integration types
+#[derive(Debug, Clone, Serialize, Deserialize, CandidType)]
+pub struct EconHealth {
+    pub total_escrows: u32,
+    pub active_escrows: u32,
+    pub total_receipts: u32,
+    pub pending_settlements: u32,
+    pub total_volume: u64,
+    pub protocol_fees_collected: u64,
+    pub average_job_cost: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, CandidType)]
+pub struct QuotaValidation {
+    pub allowed: bool,
+    pub reason: Option<String>,
+    pub remaining_quota: Option<QuotaRemaining>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, CandidType)]
+pub struct QuotaRemaining {
+    pub agents_remaining: u32,
+    pub tokens_remaining: u64,
+    pub inferences_remaining: u32,
+}
+
 // Simple validation types for routing service
 #[derive(Debug, Clone, Serialize, Deserialize, CandidType)]
 pub struct VerifierEvidence {
