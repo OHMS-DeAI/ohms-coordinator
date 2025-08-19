@@ -7,11 +7,15 @@ pub mod registry;
 pub mod routing;
 pub mod bounty;
 pub mod dedup;
+pub mod quota_manager;
+pub mod autonomous_coord;
 
 pub use registry::RegistryService;
 pub use routing::RoutingService;
 pub use bounty::BountyService;
 pub use dedup::DedupService;
+pub use quota_manager::QuotaManager;
+pub use autonomous_coord::AutonomousCoordinationService;
 
 thread_local! {
     static STATE: RefCell<CoordinatorState> = RefCell::new(CoordinatorState::default());
@@ -23,8 +27,13 @@ pub struct CoordinatorState {
     pub bounties: HashMap<String, Bounty>,
     pub dedup_cache: HashMap<String, DedupEntry>,
     pub routing_stats: HashMap<String, RoutingStats>,
+    pub user_quotas: HashMap<String, quota_manager::UserQuota>,
     pub metrics: CoordinatorMetrics,
     pub config: CoordinatorConfig,
+    // Autonomous coordination fields
+    pub coordination_sessions: Option<HashMap<String, autonomous_coord::CoordinationSession>>,
+    pub agent_capability_profiles: Option<HashMap<String, autonomous_coord::AgentCapabilityProfile>>,
+    pub agent_message_queues: Option<HashMap<String, Vec<autonomous_coord::AgentMessage>>>,
 }
 
 #[derive(Debug, Default)]
