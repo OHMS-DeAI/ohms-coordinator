@@ -1,12 +1,12 @@
 # OHMS Coordinator - Autonomous Agent Orchestration Engine
 
-[![OHMS 2.0](https://img.shields.io/badge/OHMS-2.0-blue.svg)](https://github.com/ohms-2-0)
+[![OHMS 2.0](https://img.shields.io/badge/OHMS-2.0-blue.svg)](https://github.com/OHMS-DeAI)
 [![Internet Computer](https://img.shields.io/badge/Internet_Computer-ICP-blue.svg)](https://internetcomputer.org/)
 [![Rust](https://img.shields.io/badge/Rust-1.70+-orange.svg)](https://rust-lang.org/)
 
-**Canister ID:** `xp6tn-piaaa-aaaah-qqe4q-cai`
-**Network:** Internet Computer Mainnet
-**Direct URL:** https://xp6tn-piaaa-aaaah-qqe4q-cai.icp0.io/
+**Canister ID:** `xp6tn-piaaa-aaaah-qqe4q-cai`\
+**Network:** Internet Computer Mainnet\
+**Direct URL:** https://xp6tn-piaaa-aaaah-qqe4q-cai.icp0.io/\
 **Candid UI:** https://a4gq6-oaaaa-aaaab-qaa4q-cai.raw.icp0.io/?id=xp6tn-piaaa-aaaah-qqe4q-cai
 
 The OHMS Coordinator is the central nervous system of the OHMS 2.0 autonomous agent platform, orchestrating complex multi-agent workflows, managing bounties, and ensuring efficient task distribution across the entire agent ecosystem. This canister enables true autonomous coordination where agents work together seamlessly without human intervention.
@@ -414,7 +414,7 @@ dfx canister --network local call ohms_coordinator create_bounty '(
 
 ### Community
 - [OHMS Discord](https://discord.gg/ohms)
-- [GitHub Repository](https://github.com/ohms-2-0/ohms-coordinator)
+- [GitHub Repository](https://github.com/OHMS-DeAI/ohms-coordinator)
 - [ICP Community Forum](https://forum.dfinity.org/)
 
 ---
