@@ -25,13 +25,13 @@ async fn route_request(request: RouteRequest) -> Result<RouteResponse, String> {
 async fn create_agents_from_instructions(instructions: String, agent_count: Option<u32>) -> Result<String, String> {
     Guards::require_caller_authenticated()?;
     let user_principal = ic_cdk::api::caller().to_string();
-    
+
     // Validate subscription and quota with economics canister
     let quota_validation = EconIntegrationService::validate_agent_creation_quota(&user_principal).await?;
     if !quota_validation.allowed {
         return Err(format!("Quota exceeded: {}", quota_validation.reason.unwrap_or_else(|| "Unknown reason".to_string())));
     }
-    
+
     // Sync user quota from economics canister
     EconIntegrationService::sync_user_quota_from_economics(&user_principal).await?;
     
@@ -56,7 +56,7 @@ async fn create_agents_from_instructions(instructions: String, agent_count: Opti
             // Track agent creation in economics canister
             let created_count = result.spawned_agents.len() as u32;
             EconIntegrationService::track_agent_creation(&user_principal, created_count).await?;
-            
+
             Metrics::increment_counter("agent_creation_requests_total");
             Ok(request_id)
         },

@@ -66,12 +66,12 @@ impl EconIntegrationService {
     /// Validate user subscription and quota for agent creation
     pub async fn validate_agent_creation_quota(user_principal: &str) -> Result<QuotaValidation, String> {
         let econ_canister_id = Self::get_econ_canister_id();
-        
+
         // Make cross-canister call to validate quota
         match call::call::<_, (Result<QuotaValidation, String>,)>(
             econ_canister_id,
             "validate_agent_creation_quota",
-            (),
+            (user_principal.to_string(),),
         ).await {
             Ok((Ok(validation),)) => Ok(validation),
             Ok((Err(e),)) => Err(format!("Economics canister error: {}", e)),
@@ -82,12 +82,12 @@ impl EconIntegrationService {
     /// Validate token usage quota for inference
     pub async fn validate_token_usage_quota(user_principal: &str, tokens: u64) -> Result<QuotaValidation, String> {
         let econ_canister_id = Self::get_econ_canister_id();
-        
+
         // Make cross-canister call to validate token usage
         match call::call::<_, (Result<QuotaValidation, String>,)>(
             econ_canister_id,
             "validate_token_usage_quota",
-            (tokens,),
+            (user_principal.to_string(), tokens),
         ).await {
             Ok((Ok(validation),)) => Ok(validation),
             Ok((Err(e),)) => Err(format!("Economics canister error: {}", e)),
@@ -118,7 +118,7 @@ impl EconIntegrationService {
         match call::call::<_, (Result<UserSubscription, String>,)>(
             econ_canister_id,
             "get_or_create_free_subscription",
-            (),
+            (user_principal.to_string(),),
         ).await {
             Ok((Ok(subscription),)) => Ok(subscription),
             Ok((Err(e),)) => Err(format!("Economics canister error: {}", e)),
